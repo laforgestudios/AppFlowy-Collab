@@ -694,3 +694,53 @@ fn compare_diff_view_test() {
     view_id: "v2".to_string(),
   }));
 }
+
+#[test]
+fn view_layout_round_trip_test() {
+  use collab_folder::ViewLayout;
+
+  let uid = UserId::from(1);
+  let folder_test = create_folder_with_workspace(uid.clone(), "w1");
+  let mut folder = folder_test.folder;
+  let mut txn = folder.collab.transact_mut();
+
+  let layouts = [
+    (ViewLayout::Document, 0, false),
+    (ViewLayout::Grid, 1, true),
+    (ViewLayout::Board, 2, true),
+    (ViewLayout::Calendar, 3, true),
+    (ViewLayout::Chat, 4, false),
+    (ViewLayout::Chart, 5, true),
+    (ViewLayout::List, 6, true),
+    (ViewLayout::Gallery, 7, true),
+    (ViewLayout::Feed, 8, true),
+    (ViewLayout::Form, 9, true),
+    (ViewLayout::Timeline, 10, true),
+  ];
+
+  for (layout, value, is_database) in layouts {
+    assert_eq!(i64::from(layout.clone()), value);
+    assert_eq!(ViewLayout::try_from(value).unwrap(), layout);
+    assert_eq!(layout.is_database(), is_database);
+    assert_eq!(serde_json::to_string(&layout).unwrap(), value.to_string());
+    assert_eq!(
+      serde_json::from_str::<ViewLayout>(&value.to_string()).unwrap(),
+      layout
+    );
+
+    // A view stored with this layout must be read back, not dropped.
+    let view_id = format!("v{}", value);
+    let mut view = make_test_view(&view_id, "w1", vec![]);
+    view.layout = layout.clone();
+    folder.body.views.insert(&mut txn, view, None, uid.as_i64());
+    let r_view = folder
+      .body
+      .views
+      .get_view(&txn, &view_id, uid.as_i64())
+      .unwrap();
+    assert_eq!(r_view.layout, layout);
+  }
+
+  assert!(ViewLayout::try_from(11).is_err());
+  assert!(serde_json::from_str::<ViewLayout>("11").is_err());
+}

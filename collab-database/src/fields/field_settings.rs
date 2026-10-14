@@ -96,9 +96,14 @@ pub const WRAP_CELL_CONTENT: &str = "wrap";
 
 pub fn default_field_visibility(layout_type: DatabaseLayout) -> FieldVisibility {
   match layout_type {
-    DatabaseLayout::Grid => FieldVisibility::AlwaysShown,
+    DatabaseLayout::Grid
+    | DatabaseLayout::Chart
+    | DatabaseLayout::List
+    | DatabaseLayout::Gallery
+    | DatabaseLayout::Feed
+    | DatabaseLayout::Form => FieldVisibility::AlwaysShown,
     DatabaseLayout::Board => FieldVisibility::HideWhenEmpty,
-    DatabaseLayout::Calendar => FieldVisibility::HideWhenEmpty,
+    DatabaseLayout::Calendar | DatabaseLayout::Timeline => FieldVisibility::HideWhenEmpty,
   }
 }
 

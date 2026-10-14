@@ -118,3 +118,95 @@ impl From<BoardLayoutSetting> for LayoutSetting {
     ])
   }
 }
+
+/// Layout setting of a timeline view. Stored under the [DatabaseLayout::Timeline] key with
+/// the same `field_id`/`layout_ty` keys as [CalendarLayoutSetting]; clients may add more keys
+/// (end date, dependencies, progress...) which are left untouched.
+///
+/// [DatabaseLayout::Timeline]: super::DatabaseLayout::Timeline
+#[derive(Debug, Clone)]
+pub struct TimelineLayoutSetting {
+  pub field_id: String,
+  pub layout_ty: TimelineLayout,
+  pub show_table: bool,
+}
+
+impl TimelineLayoutSetting {
+  pub fn new(field_id: String) -> Self {
+    TimelineLayoutSetting {
+      field_id,
+      layout_ty: TimelineLayout::default(),
+      show_table: DEFAULT_TIMELINE_SHOW_TABLE,
+    }
+  }
+}
+
+impl From<LayoutSetting> for TimelineLayoutSetting {
+  fn from(setting: LayoutSetting) -> Self {
+    let field_id = match setting.get("field_id") {
+      Some(Any::String(s)) => s.to_string(),
+      _ => String::new(),
+    };
+    let layout_ty = match setting.get("layout_ty") {
+      Some(Any::BigInt(v)) => TimelineLayout::from(*v),
+      Some(Any::Number(v)) => TimelineLayout::from(*v as i64),
+      _ => TimelineLayout::default(),
+    };
+    let show_table = match setting.get("show_table") {
+      Some(Any::Bool(v)) => *v,
+      _ => DEFAULT_TIMELINE_SHOW_TABLE,
+    };
+    TimelineLayoutSetting {
+      field_id,
+      layout_ty,
+      show_table,
+    }
+  }
+}
+
+impl From<TimelineLayoutSetting> for LayoutSetting {
+  fn from(setting: TimelineLayoutSetting) -> Self {
+    LayoutSettingBuilder::from([
+      ("field_id".into(), setting.field_id.into()),
+      ("layout_ty".into(), Any::BigInt(setting.layout_ty.value())),
+      ("show_table".into(), Any::Bool(setting.show_table)),
+    ])
+  }
+}
+
+/// Timeline scale, finest to coarsest.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
+pub enum TimelineLayout {
+  Hours = 0,
+  Day = 1,
+  Week = 2,
+  BiWeek = 3,
+  #[default]
+  Month = 4,
+  Quarter = 5,
+  Year = 6,
+}
+
+impl From<i64> for TimelineLayout {
+  fn from(value: i64) -> Self {
+    match value {
+      0 => TimelineLayout::Hours,
+      1 => TimelineLayout::Day,
+      2 => TimelineLayout::Week,
+      3 => TimelineLayout::BiWeek,
+      4 => TimelineLayout::Month,
+      5 => TimelineLayout::Quarter,
+      6 => TimelineLayout::Year,
+      _ => TimelineLayout::default(),
+    }
+  }
+}
+
+impl TimelineLayout {
+  pub fn value(&self) -> i64 {
+    *self as i64
+  }
+}
+
+pub const DEFAULT_TIMELINE_SHOW_TABLE: bool = true;

@@ -9,7 +9,9 @@ use collab_database::database::{DatabaseBody, DatabaseData, gen_row_id};
 use collab_database::entity::CreateViewParams;
 use collab_database::fields::Field;
 use collab_database::rows::{CreateRowParams, Row};
-use collab_database::views::{DatabaseLayout, LayoutSettingBuilder, OrderObjectPosition};
+use collab_database::views::{
+  DatabaseLayout, LayoutSettingBuilder, OrderObjectPosition, TimelineLayout, TimelineLayoutSetting,
+};
 use futures::StreamExt;
 use nanoid::nanoid;
 
@@ -264,6 +266,94 @@ async fn update_database_view_layout_test() {
 
   let layout = database_test.get_database_view_layout("v1");
   assert_eq!(layout, DatabaseLayout::Calendar);
+}
+
+#[tokio::test]
+async fn database_view_layout_round_trip_test() {
+  use std::str::FromStr;
+
+  let layouts = [
+    (DatabaseLayout::Grid, 0),
+    (DatabaseLayout::Board, 1),
+    (DatabaseLayout::Calendar, 2),
+    (DatabaseLayout::Chart, 3),
+    (DatabaseLayout::List, 4),
+    (DatabaseLayout::Gallery, 5),
+    (DatabaseLayout::Feed, 6),
+    (DatabaseLayout::Form, 7),
+    (DatabaseLayout::Timeline, 8),
+  ];
+
+  let database_id = uuid::Uuid::new_v4();
+  let mut database_test = create_database_with_default_data(1, &database_id.to_string()).await;
+
+  for (layout, value) in layouts {
+    assert_eq!(layout as i64, value);
+    assert_eq!(DatabaseLayout::from(value), layout);
+    assert_eq!(layout.as_ref(), value.to_string());
+    assert_eq!(
+      DatabaseLayout::from_str(&value.to_string()).unwrap(),
+      layout
+    );
+    assert_eq!(serde_json::to_string(&layout).unwrap(), value.to_string());
+    assert_eq!(
+      layout.requires_date_field(),
+      matches!(layout, DatabaseLayout::Calendar | DatabaseLayout::Timeline)
+    );
+
+    // Layout type of an existing view.
+    database_test.update_database_view("v1", |update| {
+      update.set_layout_type(layout);
+    });
+    assert_eq!(database_test.get_database_view_layout("v1"), layout);
+
+    // A linked view created with this layout keeps its layout and its layout setting.
+    let view_id = format!("layout-{}", value);
+    let params = CreateViewParams::new(
+      database_id.to_string(),
+      view_id.clone(),
+      view_id.clone(),
+      layout,
+    )
+    .with_layout_setting(LayoutSettingBuilder::from([("k".into(), value.into())]));
+    database_test.create_linked_view(params).unwrap();
+    let view = database_test.get_view(&view_id).unwrap();
+    assert_eq!(view.layout, layout);
+    assert_eq!(
+      view
+        .layout_settings
+        .get(&layout)
+        .unwrap()
+        .get_as::<i64>("k")
+        .unwrap(),
+      value
+    );
+  }
+
+  // Timeline layout setting survives a round trip through the view.
+  let params = CreateViewParams::new(
+    database_id.to_string(),
+    "timeline".to_string(),
+    "timeline".to_string(),
+    DatabaseLayout::Timeline,
+  )
+  .with_layout_setting(TimelineLayoutSetting::new("date_field".to_string()).into());
+  database_test.create_linked_view(params).unwrap();
+  let view = database_test.get_view("timeline").unwrap();
+  let setting = TimelineLayoutSetting::from(
+    view
+      .layout_settings
+      .get(&DatabaseLayout::Timeline)
+      .unwrap()
+      .clone(),
+  );
+  assert_eq!(setting.field_id, "date_field");
+  assert_eq!(setting.layout_ty, TimelineLayout::Month);
+  assert!(setting.show_table);
+
+  // Unknown values still fall back to Grid.
+  assert_eq!(DatabaseLayout::from(9), DatabaseLayout::Grid);
+  assert!(DatabaseLayout::from_str("9").is_err());
 }
 
 #[tokio::test]
